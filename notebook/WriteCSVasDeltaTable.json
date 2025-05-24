@@ -18,15 +18,16 @@
 				"spark.dynamicAllocation.enabled": "false",
 				"spark.dynamicAllocation.minExecutors": "2",
 				"spark.dynamicAllocation.maxExecutors": "2",
-				"spark.autotune.trackingId": "2ac7b9b3-6e72-4fcf-b6f8-0c034ce383b1"
+				"spark.autotune.trackingId": "7a0126b5-eb18-472c-bbea-428010c5a41c"
 			}
 		},
 		"metadata": {
 			"saveOutput": true,
-			"synapse_widget": {
-				"version": "0.1"
-			},
 			"enableDebugMode": false,
+			"kernelspec": {
+				"name": "synapse_pyspark",
+				"display_name": "Synapse PySpark"
+			},
 			"language_info": {
 				"name": "python"
 			},
@@ -37,18 +38,25 @@
 				"endpoint": "https://synapsebess.dev.azuresynapse.net/livyApi/versions/2019-11-01-preview/sparkPools/apachesparkpool",
 				"auth": {
 					"type": "AAD",
-					"authResource": "https://dev.azuresynapse.net",
-					"authHeader": null
+					"authResource": "https://dev.azuresynapse.net"
 				},
 				"sparkVersion": "3.4",
 				"nodeCount": 3,
 				"cores": 4,
 				"memory": 28,
-				"extraHeader": null
+				"automaticScaleJobs": false
 			},
 			"sessionKeepAliveTimeout": 30
 		},
 		"cells": [
+			{
+				"cell_type": "code",
+				"source": [
+					"# Imports\n",
+					"import re"
+				],
+				"execution_count": 42
+			},
 			{
 				"cell_type": "code",
 				"metadata": {
@@ -60,7 +68,7 @@
 					"# Parameters cell\n",
 					"csv_path = r'meter_meter_1_2025-04-30T20_53_43.157Z.csv'"
 				],
-				"execution_count": 6
+				"execution_count": 43
 			},
 			{
 				"cell_type": "code",
@@ -70,7 +78,7 @@
 					"csv_path = base_path + csv_path\n",
 					"delta_path = csv_path.replace('.csv', '_delta')"
 				],
-				"execution_count": 7
+				"execution_count": 44
 			},
 			{
 				"cell_type": "code",
@@ -81,15 +89,34 @@
 					"# Print top 5 rows of spark df\n",
 					"df_spark.limit(5).toPandas()"
 				],
-				"execution_count": 12
+				"execution_count": 45
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# Identify invalid column names\n",
+					"invalid_columns = [col for col in df_spark.columns if re.search(r\"[^\\w]\", col)]\n",
+					"print('invalid columns: ', str(invalid_columns))"
+				],
+				"execution_count": 46
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# Clean column names\n",
+					"cleaned_columns = [re.sub(r\"[^\\w]\", \"\", col) for col in df_spark.columns]\n",
+					"print('cleaned columns: ', str(cleaned_columns))"
+				],
+				"execution_count": 47
 			},
 			{
 				"cell_type": "code",
 				"source": [
 					"# Write spark df as Delta Table\n",
-					"df_spark.write.format(\"delta\").mode(\"overwrite\").save(delta_path)"
+					"df_cleaned = df_spark.toDF(*cleaned_columns)\n",
+					"df_cleaned.write.format(\"delta\").mode(\"overwrite\").save(delta_path)"
 				],
-				"execution_count": 9
+				"execution_count": 48
 			}
 		]
 	}
