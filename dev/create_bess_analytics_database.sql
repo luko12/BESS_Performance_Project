@@ -1,0 +1,1 @@
+CREATE DATABASE bess_analytics;
