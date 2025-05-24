@@ -1,0 +1,129 @@
+{
+	"name": "ReadDataToBronze",
+	"properties": {
+		"activities": [
+			{
+				"name": "ReadCSVsToBronze",
+				"description": "Read CSVs from Github into Bronze and write as Delta Tables",
+				"type": "ForEach",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@pipeline().parameters.filelist",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "CopyGithubCSVs",
+							"description": "Copy CSVs from Github into Bronze",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "BinarySource",
+									"storeSettings": {
+										"type": "HttpReadSettings",
+										"requestMethod": "GET"
+									},
+									"formatSettings": {
+										"type": "BinaryReadSettings"
+									}
+								},
+								"sink": {
+									"type": "BinarySink",
+									"storeSettings": {
+										"type": "AzureBlobFSWriteSettings"
+									}
+								},
+								"enableStaging": false
+							},
+							"inputs": [
+								{
+									"referenceName": "GithubCSVBinary",
+									"type": "DatasetReference",
+									"parameters": {
+										"relativePath": "@item()"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "ADLSCSVBinary",
+									"type": "DatasetReference",
+									"parameters": {
+										"outputFileName": "@last(split(item(), '/'))"
+									}
+								}
+							]
+						},
+						{
+							"name": "WriteCSVToDeltaTable",
+							"description": "Write CSVs in Bronze as Delta Tables",
+							"type": "SynapseNotebook",
+							"dependsOn": [
+								{
+									"activity": "CopyGithubCSVs",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"notebook": {
+									"referenceName": "WriteCSVasDeltaTable",
+									"type": "NotebookReference"
+								},
+								"parameters": {
+									"csv_path": {
+										"value": {
+											"value": "@last(split(item(), '/'))",
+											"type": "Expression"
+										},
+										"type": "string"
+									}
+								},
+								"snapshot": true,
+								"sparkPool": {
+									"referenceName": "apachesparkpool",
+									"type": "BigDataPoolReference"
+								},
+								"executorSize": "Small",
+								"driverSize": "Small"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"filelist": {
+				"type": "array",
+				"defaultValue": [
+					"Datasets/site__2025-04-30T20_50_35.909Z.csv",
+					"Datasets/meter_meter_1_2025-04-30T20_53_43.157Z.csv",
+					"Datasets/rtac_rtac_telemetry_2025-04-30T20_46_09.007Z.csv"
+				]
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-05-24T05:24:13Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

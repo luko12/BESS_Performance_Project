@@ -1,0 +1,96 @@
+{
+	"name": "WriteCSVasDeltaTable",
+	"properties": {
+		"nbformat": 4,
+		"nbformat_minor": 2,
+		"bigDataPool": {
+			"referenceName": "apachesparkpool",
+			"type": "BigDataPoolReference"
+		},
+		"sessionProperties": {
+			"driverMemory": "28g",
+			"driverCores": 4,
+			"executorMemory": "28g",
+			"executorCores": 4,
+			"numExecutors": 2,
+			"runAsWorkspaceSystemIdentity": false,
+			"conf": {
+				"spark.dynamicAllocation.enabled": "false",
+				"spark.dynamicAllocation.minExecutors": "2",
+				"spark.dynamicAllocation.maxExecutors": "2",
+				"spark.autotune.trackingId": "2ac7b9b3-6e72-4fcf-b6f8-0c034ce383b1"
+			}
+		},
+		"metadata": {
+			"saveOutput": true,
+			"synapse_widget": {
+				"version": "0.1"
+			},
+			"enableDebugMode": false,
+			"language_info": {
+				"name": "python"
+			},
+			"a365ComputeOptions": {
+				"id": "/subscriptions/b8feecf6-2675-412f-9140-d5738847cc97/resourceGroups/BESS_Performance_Group/providers/Microsoft.Synapse/workspaces/synapsebess/bigDataPools/apachesparkpool",
+				"name": "apachesparkpool",
+				"type": "Spark",
+				"endpoint": "https://synapsebess.dev.azuresynapse.net/livyApi/versions/2019-11-01-preview/sparkPools/apachesparkpool",
+				"auth": {
+					"type": "AAD",
+					"authResource": "https://dev.azuresynapse.net",
+					"authHeader": null
+				},
+				"sparkVersion": "3.4",
+				"nodeCount": 3,
+				"cores": 4,
+				"memory": 28,
+				"extraHeader": null
+			},
+			"sessionKeepAliveTimeout": 30
+		},
+		"cells": [
+			{
+				"cell_type": "code",
+				"metadata": {
+					"tags": [
+						"parameters"
+					]
+				},
+				"source": [
+					"# Parameters cell\n",
+					"csv_path = r'meter_meter_1_2025-04-30T20_53_43.157Z.csv'"
+				],
+				"execution_count": 6
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# Initialize path variables\n",
+					"base_path = r\"abfss://datalake@bessstorage.dfs.core.windows.net/bronze/\"\n",
+					"csv_path = base_path + csv_path\n",
+					"delta_path = csv_path.replace('.csv', '_delta')"
+				],
+				"execution_count": 7
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# Read CSV into spark df\n",
+					"df_spark = spark.read.option(\"header\", True).csv(csv_path)\n",
+					"\n",
+					"# Print top 5 rows of spark df\n",
+					"df_spark.limit(5).toPandas()"
+				],
+				"execution_count": 12
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# Write spark df as Delta Table\n",
+					"df_spark.write.format(\"delta\").mode(\"overwrite\").save(delta_path)"
+				],
+				"execution_count": 9
+			}
+		]
+	}
+}
