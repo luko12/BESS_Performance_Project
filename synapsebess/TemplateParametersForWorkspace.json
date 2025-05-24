@@ -1,0 +1,24 @@
+{
+	"$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
+		"workspaceName": {
+			"value": "synapsebess"
+		},
+		"AzureDataLakeStorage1_accountKey": {
+			"value": ""
+		},
+		"synapsebess-WorkspaceDefaultSqlServer_connectionString": {
+			"value": "Integrated Security=False;Encrypt=True;Connection Timeout=30;Data Source=tcp:synapsebess.sql.azuresynapse.net,1433;Initial Catalog=@{linkedService().DBName}"
+		},
+		"AzureDataLakeStorage1_properties_typeProperties_url": {
+			"value": "https://bessstorage.dfs.core.windows.net/"
+		},
+		"HttpServer1_properties_typeProperties_url": {
+			"value": "https://raw.githubusercontent.com/luko12/BESS_Performance_Project/main/"
+		},
+		"synapsebess-WorkspaceDefaultStorage_properties_typeProperties_url": {
+			"value": "https://bessstorage.dfs.core.windows.net"
+		}
+	}
+}
