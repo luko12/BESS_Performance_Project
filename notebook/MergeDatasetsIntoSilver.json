@@ -1,0 +1,665 @@
+{
+	"name": "MergeDatasetsIntoSilver",
+	"properties": {
+		"nbformat": 4,
+		"nbformat_minor": 2,
+		"bigDataPool": {
+			"referenceName": "apachesparkpool",
+			"type": "BigDataPoolReference"
+		},
+		"sessionProperties": {
+			"driverMemory": "28g",
+			"driverCores": 4,
+			"executorMemory": "28g",
+			"executorCores": 4,
+			"numExecutors": 2,
+			"conf": {
+				"spark.dynamicAllocation.enabled": "false",
+				"spark.dynamicAllocation.minExecutors": "2",
+				"spark.dynamicAllocation.maxExecutors": "2",
+				"spark.autotune.trackingId": "792b722e-5a61-4615-a6be-b4661de31039"
+			}
+		},
+		"metadata": {
+			"saveOutput": true,
+			"enableDebugMode": false,
+			"kernelspec": {
+				"name": "synapse_pyspark",
+				"display_name": "Synapse PySpark"
+			},
+			"language_info": {
+				"name": "python"
+			},
+			"a365ComputeOptions": {
+				"id": "/subscriptions/b8feecf6-2675-412f-9140-d5738847cc97/resourceGroups/BESS_Performance_Group/providers/Microsoft.Synapse/workspaces/synapsebess/bigDataPools/apachesparkpool",
+				"name": "apachesparkpool",
+				"type": "Spark",
+				"endpoint": "https://synapsebess.dev.azuresynapse.net/livyApi/versions/2019-11-01-preview/sparkPools/apachesparkpool",
+				"auth": {
+					"type": "AAD",
+					"authResource": "https://dev.azuresynapse.net"
+				},
+				"sparkVersion": "3.4",
+				"nodeCount": 3,
+				"cores": 4,
+				"memory": 28,
+				"automaticScaleJobs": false
+			},
+			"sessionKeepAliveTimeout": 30
+		},
+		"cells": [
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"# Setup"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# imports\n",
+					"import requests\n",
+					"import datetime\n",
+					"import pandas as pd\n",
+					"from py4j.java_gateway import java_import\n",
+					"from pyspark.sql.functions import to_timestamp, min, max, col, date_trunc, avg, last"
+				],
+				"execution_count": 207
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"base_path = r\"abfss://datalake@bessstorage.dfs.core.windows.net/\"\n",
+					"bronze_path = base_path + r\"bronze/\"\n",
+					"silver_path = base_path + r\"silver/\""
+				],
+				"execution_count": 208
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# determine delta table paths in Bronze directory\n",
+					"java_import(spark._jvm, 'org.apache.hadoop.fs.Path')\n",
+					"\n",
+					"fs = spark._jvm.org.apache.hadoop.fs.FileSystem.get(spark._jsc.hadoopConfiguration())\n",
+					"status = fs.listStatus(spark._jvm.Path(bronze_path))\n",
+					"delta_table_paths = [str(file.getPath()) for file in status if file.isDirectory()]"
+				],
+				"execution_count": 209
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# read delta tables as dataframes\n",
+					"dfs = {}\n",
+					"\n",
+					"for path in delta_table_paths:\n",
+					"    df = spark.read.format(\"delta\").load(path)\n",
+					"    table_name = path.split(\"/\")[-1]\n",
+					"\n",
+					"    print('table name:', table_name)\n",
+					"    dfs[table_name] = df"
+				],
+				"execution_count": 210
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"# Print First 3 Rows of Tables"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"dfs['meter_meter_1_2025-04-30T20_53_43.157Z_delta'].limit(3).toPandas()"
+				],
+				"execution_count": 211
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"dfs['rtac_rtac_telemetry_2025-04-30T20_46_09.007Z_delta'].limit(3).toPandas()"
+				],
+				"execution_count": 212
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"dfs['site__2025-04-30T20_50_35.909Z_delta'].limit(3).toPandas()"
+				],
+				"execution_count": 213
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"dfs['weather_delta'].limit(3).toPandas()"
+				],
+				"execution_count": 214
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"# Convert time columns to uniform datetime"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"for df_key in dfs.keys():\n",
+					"    if \"_time\" in dfs[df_key].columns:\n",
+					"        time_col = \"_time\"\n",
+					"        date_format = \"yyyy-MM-dd'T'HH:mm:ss'Z'\"\n",
+					"    elif \"hour\" in dfs[df_key].columns:\n",
+					"        time_col = \"hour\"\n",
+					"        date_format = \"yyyy-MM-dd'T'HH:mm\"\n",
+					"\n",
+					"    dfs[df_key] = dfs[df_key].withColumn(\"datetime\", to_timestamp(time_col, date_format))\n",
+					"    dfs[df_key] = dfs[df_key].drop(time_col)"
+				],
+				"execution_count": 215
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"# Delete Null Rows"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"for df_key in dfs.keys():\n",
+					"    all_cols = dfs[df_key].columns\n",
+					"\n",
+					"    cols_to_check = [col for col in all_cols if col != \"datetime\"]\n",
+					"\n",
+					"    dfs[df_key] = dfs[df_key].na.drop(how=\"all\", subset=cols_to_check)"
+				],
+				"execution_count": 216
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"# Change Column Datatypes Appropriately"
+				]
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"#### Meter table"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# print existing column types\n",
+					"dfs['meter_meter_1_2025-04-30T20_53_43.157Z_delta'].printSchema()"
+				],
+				"execution_count": 217
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# for each column, print top 3 most common values (to get a sense of appropriate type)\n",
+					"for col_name in dfs['meter_meter_1_2025-04-30T20_53_43.157Z_delta'].columns:\n",
+					"    if col_name not in [\"datetime\", \"_time\", \"hour\"]:\n",
+					"        dfs['meter_meter_1_2025-04-30T20_53_43.157Z_delta'].groupBy(col_name) \\\n",
+					"            .count() \\\n",
+					"            .orderBy(\"count\", ascending=False) \\\n",
+					"            .limit(3) \\\n",
+					"            .show(truncate=False)"
+				],
+				"execution_count": 218
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"Since float appears the most appropriate column type for each column, convert them to float"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# convert columns to float\n",
+					"for col_name in dfs['meter_meter_1_2025-04-30T20_53_43.157Z_delta'].columns:\n",
+					"    if col_name not in [\"datetime\", \"_time\", \"hour\"]:\n",
+					"        dfs['meter_meter_1_2025-04-30T20_53_43.157Z_delta'] = dfs['meter_meter_1_2025-04-30T20_53_43.157Z_delta'].withColumn(col_name, col(col_name).cast(\"float\"))"
+				],
+				"execution_count": 219
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# print datatypes again to confirm\n",
+					"dfs['meter_meter_1_2025-04-30T20_53_43.157Z_delta'].printSchema()"
+				],
+				"execution_count": 220
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"#### RTAC table"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# print existing column types\n",
+					"dfs['rtac_rtac_telemetry_2025-04-30T20_46_09.007Z_delta'].printSchema()"
+				],
+				"execution_count": 221
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# for each column, print top 3 most common values (to get a sense of appropriate type)\n",
+					"for col_name in dfs['rtac_rtac_telemetry_2025-04-30T20_46_09.007Z_delta'].columns:\n",
+					"    if col_name not in [\"datetime\", \"_time\", \"hour\"]:\n",
+					"        dfs['rtac_rtac_telemetry_2025-04-30T20_46_09.007Z_delta'].groupBy(col_name) \\\n",
+					"            .count() \\\n",
+					"            .orderBy(\"count\", ascending=False) \\\n",
+					"            .limit(3) \\\n",
+					"            .show(truncate=False)"
+				],
+				"execution_count": 222
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"Here, it appears some columns would be best cast as boolean type however we should be okay converting them all to floats as before"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# convert columns to float\n",
+					"for col_name in dfs['rtac_rtac_telemetry_2025-04-30T20_46_09.007Z_delta'].columns:\n",
+					"    if col_name not in [\"datetime\", \"_time\", \"hour\"]:\n",
+					"        dfs['rtac_rtac_telemetry_2025-04-30T20_46_09.007Z_delta'] = dfs['rtac_rtac_telemetry_2025-04-30T20_46_09.007Z_delta'].withColumn(col_name, col(col_name).cast(\"float\"))"
+				],
+				"execution_count": 223
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# print datatypes again to confirm\n",
+					"dfs['rtac_rtac_telemetry_2025-04-30T20_46_09.007Z_delta'].printSchema()"
+				],
+				"execution_count": 224
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"#### Site table"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# print existing column types\n",
+					"dfs['site__2025-04-30T20_50_35.909Z_delta'].printSchema()"
+				],
+				"execution_count": 225
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# for each column, print top 3 most common values (to get a sense of appropriate type)\n",
+					"for col_name in dfs['site__2025-04-30T20_50_35.909Z_delta'].columns:\n",
+					"    if col_name not in [\"datetime\", \"_time\", \"hour\"]:\n",
+					"        dfs['site__2025-04-30T20_50_35.909Z_delta'].groupBy(col_name) \\\n",
+					"            .count() \\\n",
+					"            .orderBy(\"count\", ascending=False) \\\n",
+					"            .limit(3) \\\n",
+					"            .show(truncate=False)"
+				],
+				"execution_count": 226
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"In the site table, certain columns should definitely remain as strings whereas the rest should be cast to floats. In particular, the string columns are:\n",
+					"* Application\n",
+					"* ChaSt\n",
+					"* LocRemCtl\n",
+					"* Mode\n",
+					"* Status"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# convert columns to float\n",
+					"for col_name in dfs['site__2025-04-30T20_50_35.909Z_delta'].columns:\n",
+					"    if col_name not in [\"datetime\", \"_time\", \"hour\", \"Application\", \"ChaSt\", \"LocRemCtl\", \"Mode\", \"Status\"]:\n",
+					"        dfs['site__2025-04-30T20_50_35.909Z_delta'] = dfs['site__2025-04-30T20_50_35.909Z_delta'].withColumn(col_name, col(col_name).cast(\"float\"))"
+				],
+				"execution_count": 227
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# print datatypes again to confirm\n",
+					"dfs['site__2025-04-30T20_50_35.909Z_delta'].printSchema()"
+				],
+				"execution_count": 228
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"#### Weather table"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"dfs['weather_delta'].dtypes"
+				],
+				"execution_count": 229
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"for col_name in dfs['weather_delta'].columns:\n",
+					"    if col_name not in [\"datetime\", \"_time\", \"hour\"]:\n",
+					"        dfs['weather_delta'].groupBy(col_name) \\\n",
+					"            .count() \\\n",
+					"            .orderBy(\"count\", ascending=False) \\\n",
+					"            .limit(3) \\\n",
+					"            .show(truncate=False)"
+				],
+				"execution_count": 230
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"The weather data table is already properly types, so we don't need to convert any column types here"
+				]
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"# Rename Ambiguous Columns"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"dfs['rtac_rtac_telemetry_2025-04-30T20_46_09.007Z_delta'] = dfs['rtac_rtac_telemetry_2025-04-30T20_46_09.007Z_delta'].withColumnRenamed(\"lmp\", \"rtac_lmp\")\n",
+					"dfs['site__2025-04-30T20_50_35.909Z_delta'] = dfs['site__2025-04-30T20_50_35.909Z_delta'].withColumnRenamed(\"lmp\", \"site_lmp\")"
+				],
+				"execution_count": 231
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"# Group By Minute\n",
+					"Take Avg of Float or Last of String Columns\n",
+					"\n",
+					"Skip weather table because it is already at hourly resolution"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"for df_key in dfs.keys():\n",
+					"    if df_key != \"weather_delta\":\n",
+					"        # order dataset\n",
+					"        dfs[df_key] = dfs[df_key].orderBy(\"datetime\")\n",
+					"\n",
+					"        # calculate minute column rounded down\n",
+					"        dfs[df_key] = dfs[df_key].withColumn(\"datetime_minute\", date_trunc(\"minute\", col(\"datetime\")))\n",
+					"\n",
+					"        # determine which columns are floats and which are strings\n",
+					"        float_cols = [f.name for f in dfs[df_key].schema.fields if f.dataType.simpleString() == \"float\"]\n",
+					"        string_cols = [f.name for f in dfs[df_key].schema.fields if f.dataType.simpleString() == \"string\"]\n",
+					"\n",
+					"        # build aggregation expression and perform the groupby\n",
+					"        agg_exprs = [avg(col(c)).alias(c) for c in float_cols] + \\\n",
+					"                [last(col(c), ignorenulls=True).alias(c) for c in string_cols]\n",
+					"        dfs[df_key] = dfs[df_key].groupBy(\"datetime_minute\").agg(*agg_exprs)"
+				],
+				"execution_count": 232
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"# Merge datasets together with weather dataset\n",
+					"Based on LMP data showing maximum at midnight, minimum at noon, and local maximum at 2pm, the datasets appear to be in UTC. Since weather data is also in UTC, we don't need to perform any timezone conversion"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# merge site dataframes on datetime_minute column\n",
+					"to_merge_tables = [table for table in list(dfs.keys()) if table != \"weather_delta\"]\n",
+					"\n",
+					"df_merged = dfs[to_merge_tables[0]].join(\n",
+					"    dfs[to_merge_tables[1]], on=\"datetime_minute\", how=\"outer\")\n",
+					"\n",
+					"df_merged = df_merged.join(\n",
+					"    dfs[to_merge_tables[2]], on=\"datetime_minute\", how=\"outer\")\n",
+					"\n",
+					"df_merged.limit(5).toPandas()"
+				],
+				"execution_count": 233
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# calculate hour column rounded down in order to merge with hourly weather data\n",
+					"df_merged = df_merged.withColumn(\"datetime_hour\", date_trunc(\"hour\", col(\"datetime_minute\")))\n",
+					"df_merged.limit(5).toPandas()"
+				],
+				"execution_count": 234
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# rename weather datetime column to \"datetime_hour\" because it is hourly\n",
+					"dfs[\"weather_delta\"] = dfs[\"weather_delta\"].withColumnRenamed(\"datetime\", \"datetime_hour\")\n",
+					"dfs[\"weather_delta\"].limit(5).toPandas()"
+				],
+				"execution_count": 235
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# merge datasets with weather\n",
+					"df_merged = df_merged.join(\n",
+					"    dfs[\"weather_delta\"], on=\"datetime_hour\", how=\"outer\")\n",
+					"df_merged.limit(5).toPandas()"
+				],
+				"execution_count": 236
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"# Filter datetime_minute to where all datasets have data"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"latest_min_datetime = pd.NaT\n",
+					"earliest_max_datetime = pd.NaT"
+				],
+				"execution_count": 237
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"for path in delta_table_paths:\n",
+					"    if \"weather_delta\" not in path:\n",
+					"        df = spark.read.format(\"delta\").load(path)\n",
+					"        table_name = path.split(\"/\")[-1]\n",
+					"        df = df.withColumn(\"_time\", to_timestamp(\"_time\", \"yyyy-MM-dd'T'HH:mm:ss'Z'\"))\n",
+					"        df_min_datetime = df.select(min(\"_time\")).collect()[0][0]\n",
+					"        df_max_datetime = df.select(max(\"_time\")).collect()[0][0]\n",
+					"        print(f\"{table_name}: min datetime= {df_min_datetime}, max datetime= {df_max_datetime}\")\n",
+					"\n",
+					"        if pd.isna(latest_min_datetime):\n",
+					"            latest_min_datetime = df_min_datetime\n",
+					"        elif df_min_datetime > latest_min_datetime:\n",
+					"            latest_min_datetime = df_min_datetime\n",
+					"\n",
+					"        if pd.isna(earliest_max_datetime):\n",
+					"            earliest_max_datetime = df_max_datetime\n",
+					"        elif df_max_datetime < earliest_max_datetime:\n",
+					"            earliest_max_datetime = df_max_datetime\n",
+					"\n",
+					"print(f\"\\nlatest min datetime: {latest_min_datetime}, earliest max datetime: {earliest_max_datetime}\")"
+				],
+				"execution_count": 238
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"df_merged = df_merged.filter(\n",
+					"    (col(\"datetime_minute\") >= latest_min_datetime) & (col(\"datetime_minute\") <= earliest_max_datetime)\n",
+					")\n",
+					"df_merged.limit(5).toPandas()"
+				],
+				"execution_count": 239
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"# Write into Delta Table in Silver Directory"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"df_merged.write.format(\"delta\").mode(\"overwrite\").save(silver_path + \"merged_delta\")"
+				],
+				"execution_count": 240
+			}
+		]
+	}
+}

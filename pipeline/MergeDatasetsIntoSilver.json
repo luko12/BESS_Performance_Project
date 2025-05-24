@@ -1,0 +1,25 @@
+{
+	"name": "MergeDatasetsIntoSilver",
+	"properties": {
+		"activities": [
+			{
+				"name": "MergeDatasetsIntoSilver",
+				"description": "Read datasets, merge and write into delta table in silver",
+				"type": "SynapseNotebook",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"snapshot": true
+				}
+			}
+		],
+		"annotations": []
+	}
+}
