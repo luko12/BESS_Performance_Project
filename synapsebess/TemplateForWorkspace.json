@@ -153,6 +153,39 @@
 								}
 							]
 						}
+					},
+					{
+						"name": "WriteWeatherToDeltaTable",
+						"description": "Write data from weather API into delta table",
+						"type": "SynapseNotebook",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "0.12:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"notebook": {
+								"referenceName": "WriteWeatherDataasDeltaTable",
+								"type": "NotebookReference"
+							},
+							"snapshot": true,
+							"sparkPool": {
+								"referenceName": "apachesparkpool",
+								"type": "BigDataPoolReference"
+							},
+							"executorSize": "Small",
+							"conf": {
+								"spark.dynamicAllocation.enabled": null,
+								"spark.dynamicAllocation.minExecutors": null,
+								"spark.dynamicAllocation.maxExecutors": null
+							},
+							"driverSize": "Small",
+							"numExecutors": null
+						}
 					}
 				],
 				"policy": {
@@ -172,10 +205,11 @@
 				"lastPublishTime": "2025-05-24T05:24:13Z"
 			},
 			"dependsOn": [
+				"[concat(variables('workspaceId'), '/notebooks/WriteWeatherDataasDeltaTable')]",
+				"[concat(variables('workspaceId'), '/bigDataPools/apachesparkpool')]",
 				"[concat(variables('workspaceId'), '/datasets/GithubCSVBinary')]",
 				"[concat(variables('workspaceId'), '/datasets/ADLSCSVBinary')]",
-				"[concat(variables('workspaceId'), '/notebooks/WriteCSVasDeltaTable')]",
-				"[concat(variables('workspaceId'), '/bigDataPools/apachesparkpool')]"
+				"[concat(variables('workspaceId'), '/notebooks/WriteCSVasDeltaTable')]"
 			]
 		},
 		{
@@ -509,7 +543,7 @@
 						"spark.dynamicAllocation.enabled": "false",
 						"spark.dynamicAllocation.minExecutors": "2",
 						"spark.dynamicAllocation.maxExecutors": "2",
-						"spark.autotune.trackingId": "20ab2d80-fa14-48f1-a890-9809aa510a97"
+						"spark.autotune.trackingId": "d5c2e9ca-9c7f-4ee9-98d9-617652ee263b"
 					}
 				},
 				"metadata": {
@@ -534,15 +568,13 @@
 						"sparkVersion": "3.4",
 						"nodeCount": 3,
 						"cores": 4,
-						"memory": 28,
-						"automaticScaleJobs": false
+						"memory": 28
 					},
 					"sessionKeepAliveTimeout": 30
 				},
 				"cells": [
 					{
 						"cell_type": "code",
-						"metadata": {},
 						"source": [
 							"# imports\n",
 							"import requests\n",
@@ -556,7 +588,6 @@
 					},
 					{
 						"cell_type": "code",
-						"metadata": {},
 						"source": [
 							"# Get coords of esVolta Anole project in DFW area\n",
 							"lat, lon = 32.553638, -96.537577"
@@ -580,7 +611,6 @@
 					},
 					{
 						"cell_type": "code",
-						"metadata": {},
 						"source": [
 							"# initialize variables\n",
 							"base_path = \"abfss://datalake@bessstorage.dfs.core.windows.net/bronze/\"\n",
@@ -592,7 +622,6 @@
 					},
 					{
 						"cell_type": "code",
-						"metadata": {},
 						"source": [
 							"# determine delta table paths in Bronze directory\n",
 							"java_import(spark._jvm, 'org.apache.hadoop.fs.Path')\n",
@@ -606,7 +635,6 @@
 					},
 					{
 						"cell_type": "code",
-						"metadata": {},
 						"source": [
 							"for path in delta_table_paths:\n",
 							"    df = spark.read.format(\"delta\").load(path)\n",
@@ -646,7 +674,6 @@
 					},
 					{
 						"cell_type": "code",
-						"metadata": {},
 						"source": [
 							"point_url = f\"https://api.weather.gov/points/{lat},{lon}/stations\"\n",
 							"point_resp = requests.get(point_url).json()"
@@ -656,7 +683,6 @@
 					},
 					{
 						"cell_type": "code",
-						"metadata": {},
 						"source": [
 							"station_name = point_resp['features'][0]['properties']['name']\n",
 							"print('station name: ', station_name)"
@@ -666,7 +692,6 @@
 					},
 					{
 						"cell_type": "code",
-						"metadata": {},
 						"source": [
 							"station_id = point_resp['features'][0]['properties']['stationIdentifier']\n",
 							"print('station id: ', station_id)"
@@ -676,7 +701,6 @@
 					},
 					{
 						"cell_type": "code",
-						"metadata": {},
 						"source": [
 							"observations_url = point_resp['observationStations'][0]\n",
 							"print('observations url: ', observations_url)"
@@ -686,7 +710,6 @@
 					},
 					{
 						"cell_type": "code",
-						"metadata": {},
 						"source": [
 							"# initialize date range and request from observations endpoint\n",
 							"start_str = min_datetime.strftime(\"%Y-%m-%dT%H:%M:%SZ\")\n",
@@ -728,7 +751,6 @@
 					},
 					{
 						"cell_type": "code",
-						"metadata": {},
 						"source": [
 							"min_datetime.strftime(\"%Y-%m-%d\")\n",
 							"max_datetime.strftime(\"%Y-%m-%d\")"
@@ -738,7 +760,6 @@
 					},
 					{
 						"cell_type": "code",
-						"metadata": {},
 						"source": [
 							"url = \"https://api.open-meteo.com/v1/forecast\"\n",
 							"params = {\n",
@@ -755,7 +776,6 @@
 					},
 					{
 						"cell_type": "code",
-						"metadata": {},
 						"source": [
 							"# Extract data from response\n",
 							"hourly = response.json()['hourly']\n",
@@ -774,7 +794,6 @@
 					},
 					{
 						"cell_type": "code",
-						"metadata": {},
 						"source": [
 							"# write to delta table\n",
 							"weather_df.write.format(\"delta\").mode(\"overwrite\").save(base_path + 'weather_delta')"
