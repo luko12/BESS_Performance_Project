@@ -1,0 +1,17 @@
+{
+	"name": "create_bess_analytics_database",
+	"properties": {
+		"content": {
+			"query": "CREATE DATABASE bess_analytics;",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "master",
+				"poolName": "Built-in"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

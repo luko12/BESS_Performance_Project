@@ -1,0 +1,17 @@
+{
+	"name": "create_merged_silver_view",
+	"properties": {
+		"content": {
+			"query": "CREATE OR ALTER VIEW merged_delta_view AS\nSELECT * \nFROM OPENROWSET(\n    BULK 'https://bessstorage.dfs.core.windows.net/datalake/silver/merged_delta/',\n    FORMAT = 'DELTA'\n) AS rows;",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "bess_analytics",
+				"poolName": "Built-in"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}
