@@ -1,0 +1,111 @@
+{
+	"name": "PlotlyDashboardNotebook",
+	"properties": {
+		"nbformat": 4,
+		"nbformat_minor": 2,
+		"bigDataPool": {
+			"referenceName": "apachesparkpool",
+			"type": "BigDataPoolReference"
+		},
+		"sessionProperties": {
+			"driverMemory": "28g",
+			"driverCores": 4,
+			"executorMemory": "28g",
+			"executorCores": 4,
+			"numExecutors": 2,
+			"conf": {
+				"spark.dynamicAllocation.enabled": "false",
+				"spark.dynamicAllocation.minExecutors": "2",
+				"spark.dynamicAllocation.maxExecutors": "2",
+				"spark.autotune.trackingId": "3fc43826-28a8-4b78-a14c-d63ec3b1f03f"
+			}
+		},
+		"metadata": {
+			"saveOutput": true,
+			"enableDebugMode": false,
+			"kernelspec": {
+				"name": "synapse_pyspark",
+				"display_name": "Synapse PySpark"
+			},
+			"language_info": {
+				"name": "python"
+			},
+			"a365ComputeOptions": {
+				"id": "/subscriptions/b8feecf6-2675-412f-9140-d5738847cc97/resourceGroups/BESS_Performance_Group/providers/Microsoft.Synapse/workspaces/synapsebess/bigDataPools/apachesparkpool",
+				"name": "apachesparkpool",
+				"type": "Spark",
+				"endpoint": "https://synapsebess.dev.azuresynapse.net/livyApi/versions/2019-11-01-preview/sparkPools/apachesparkpool",
+				"auth": {
+					"type": "AAD",
+					"authResource": "https://dev.azuresynapse.net"
+				},
+				"sparkVersion": "3.4",
+				"nodeCount": 3,
+				"cores": 4,
+				"memory": 28,
+				"automaticScaleJobs": false
+			},
+			"sessionKeepAliveTimeout": 30
+		},
+		"cells": [
+			{
+				"cell_type": "code",
+				"source": [
+					"from pyspark.sql import SparkSession\n",
+					"import dash\n",
+					"from dash import dcc, html\n",
+					"import plotly.express as px"
+				],
+				"execution_count": 4
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"spark = SparkSession.builder.appName(\"PlotlyDashboard\").getOrCreate()\n",
+					"\n",
+					"df = spark.read.format(\"delta\").load(\"abfss://datalake@bessstorage.dfs.core.windows.net/silver/merged_delta\")\n",
+					"pandas_df = df.toPandas()"
+				],
+				"execution_count": 2
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"pandas_df.head()"
+				],
+				"execution_count": 3
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"fig = px.line(pandas_df, x=\"datetime_minute\", y=\"BESSkW\", title=\"Power over Time\")"
+				],
+				"execution_count": 5
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"fig.show()"
+				],
+				"execution_count": 6
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"app = dash.Dash(__name__)\n",
+					"\n",
+					"fig = px.line(pandas_df, x=\"datetime_minute\", y=\"BESSkW\", title=\"Power over Time\")\n",
+					"\n",
+					"app.layout = html.Div([\n",
+					"    html.H1(\"Battery Performance Dashboard\"),\n",
+					"    dcc.Graph(figure=fig)\n",
+					"])\n",
+					"\n",
+					"if __name__ == \"__main__\":\n",
+					"    app.run_server(debug=True)"
+				],
+				"execution_count": 7
+			}
+		]
+	}
+}

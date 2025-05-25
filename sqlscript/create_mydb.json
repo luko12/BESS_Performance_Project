@@ -1,0 +1,17 @@
+{
+	"name": "create_mydb",
+	"properties": {
+		"content": {
+			"query": "CREATE DATABASE MyDB;\n",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "bess_analytics",
+				"poolName": "Built-in"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

@@ -1,0 +1,17 @@
+{
+	"name": "create_external_datasource",
+	"properties": {
+		"content": {
+			"query": "CREATE EXTERNAL DATA SOURCE bess_datalake\nWITH (\n    LOCATION = 'https://bessstorage.dfs.core.windows.net/',\n    CREDENTIAL = bess_credential\n);",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "MyDB",
+				"poolName": "Built-in"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}
