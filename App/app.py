@@ -9,6 +9,7 @@ import pyodbc
 from sqlalchemy import create_engine
 import datetime
 from dotenv import load_dotenv
+import math
 
 import urllib
 
@@ -38,10 +39,132 @@ df['datetime_minute'] = pd.to_datetime(df['datetime_minute'])
 df = df.sort_values(by='datetime_minute')
 
 
+############################################
+# Part 3 Graphs
+
+# Number of columns per row in the display table
+columns_per_row = 5
+
+# Reshape column names into a 2D list
+col_names = df.columns.tolist()
+rows = [
+    col_names[i:i + columns_per_row]
+    for i in range(0, len(col_names), columns_per_row)
+]
+
+# Define your status columns
+status_cols = [
+    '89_l1_status',
+    'avr_status',
+    'gen_virtual_breaker_status',
+    '52_1_status',
+    'gen_sc_status',
+    '89_b1_status',
+    'Status'
+]
+
+# Keep only float-type columns from the list
+float_status_cols = [
+    col for col in status_cols
+    if col in df.columns and pd.api.types.is_float_dtype(df[col])
+]
+
+# Create Plotly figure
+fig31 = go.Figure()
+
+# Add traces for each float status column with separate y-axes
+for i, col in enumerate(float_status_cols):
+    axis_id = "" if i == 0 else str(i + 1)
+    fig31.add_trace(go.Scatter(
+        x=df['datetime_minute'],
+        y=df[col],
+        name=col,
+        yaxis=f'y{axis_id}'
+    ))
+
+# Create layout with multiple y-axes
+layout = dict(
+    title="Float Status Signals Over Time",
+    xaxis=dict(title="Time"),
+)
+
+# Add dynamic y-axis definitions
+for i, col in enumerate(float_status_cols):
+    axis_id = "" if i == 0 else str(i + 1)
+    layout[f'yaxis{axis_id}'] = dict(
+        title=col,
+        overlaying='y' if i != 0 else None,
+        side='left' if i % 2 == 0 else 'right',
+        position=0.05 + 0.05 * i if i != 0 else None,
+        showgrid=False
+    )
+
+fig31.update_layout(layout)
+
+# First scatterplot: BESSkW vs rtac_lmp
+def render_scatter_lmp():
+    corr = df[['rtac_lmp', 'BESSkW']].corr().iloc[0, 1]
+
+    fig = px.scatter(
+        df,
+        x='rtac_lmp',
+        y='BESSkW',
+        title="LMP vs BESSkW",
+        labels={'rtac_lmp': 'Locational Marginal Price', 'BESSkW': 'Battery Power (kW)'},
+        opacity=0.7
+    )
+
+    fig.add_annotation(
+        xref='paper',
+        yref='paper',
+        x=0.5,
+        y=1.1,
+        showarrow=False,
+        font=dict(size=14),
+        text=f"Correlation Coefficient: {corr:.3f}"
+    )
+
+    fig.update_layout(template="plotly_white")
+    return fig
+
+# Second scatterplot: BESSkW vs gen_base_point
+def render_scatter_basepoint():
+
+    df_clean = df[['gen_base_point', 'BESSkW']].copy()
+    df_clean = df_clean.dropna()
+    df_clean = df_clean[
+        pd.to_numeric(df_clean['gen_base_point'], errors='coerce').notnull() &
+        pd.to_numeric(df_clean['BESSkW'], errors='coerce').notnull()
+    ]
+
+    corr = df_clean[['gen_base_point', 'BESSkW']].corr().iloc[0, 1]
+
+    fig = px.scatter(
+        df_clean,
+        x='gen_base_point',
+        y='BESSkW',
+        title="Basepoint vs BESSkW",
+        labels={'gen_base_point': 'Base Point', 'BESSkW': 'Battery Power (kW)'},
+        opacity=0.7
+    )
+
+    fig.add_annotation(
+        xref='paper',
+        yref='paper',
+        x=0.5,
+        y=1.1,
+        showarrow=False,
+        font=dict(size=14),
+        text=f"Correlation Coefficient: {corr:.3f}"
+    )
+
+    fig.update_layout(template="plotly_white")
+    return fig
+
+
+###########################################################
 # Build Dash app
 assets_path = os.path.join(os.getcwd(), 'assets')
-print("ASSETS PATH:", assets_path)
-
 app = dash.Dash(__name__, assets_folder='assets')
 
 # Layout
@@ -177,9 +300,50 @@ app.layout = html.Div([
         html.P("Screenshot of SQL View of Merged Delta Table in Synapse Serverless SQL:"),
         html.Img(src='/assets/Capture6.PNG', style={'width': '75%', 'height': 'auto'}),
 
-        html.H2("Part 3: Exploratory Data Analysis"),
                            
     ]),
+
+    html.H2("Part 3: Exploratory Data Analysis"),
+    html.H4("DataFrame Columns"),
+    html.Table([
+        html.Tbody([
+            html.Tr([
+                html.Td(col) for col in row
+            ]) for row in rows
+        ])
+    ]),
+
+    html.H4("Plot of Status Signals (with Dropdown)"),
+    html.P("Note that statuses are unchanging over time"),
+    dcc.Dropdown(
+        id='status-selector',
+        options=[{'label': col, 'value': col} for col in float_status_cols],
+        value=float_status_cols[0],
+        clearable=False
+    ),
+
+    dcc.Graph(id='status-graph'),
+
+    html.Div([
+        html.H4("Scatterplot: LMP vs BESSkW"),
+        html.P("There's a clear relationship between LMP and BESS dispatch, with higher prices " \
+        "resulting in higher discharging and lower prices resulting in higher charging."
+        " However, the dispatch activity is only moderately correlated with LMP which suggests" \
+        " significant room" \
+        " for improvement."),
+        dcc.Graph(
+            id='lmp-bess-scatter',
+            figure=render_scatter_lmp()
+        ),
+        html.H4("Scatterplot: Basepoint vs BESSkW"),
+        html.P("There's a very strong correlation between power and base point, which indicates "
+        "that HSL is calculated well and the system control logic is able to follow commands without "
+        "surprises. This is a very good sign- many other BESS operators in ERCOT struggle with basepoint deviations."),
+        dcc.Graph(
+            id='power-basepoint-scatter',
+            figure=render_scatter_basepoint()
+        )
+])
 
 ])
 
@@ -245,6 +409,27 @@ def update_graphs(slider_range):
 
     return fig1, fig2, fig3, fig4, start_str, end_str
 
+@app.callback(
+    Output('status-graph', 'figure'),
+    Input('status-selector', 'value')
+)
+
+def update_status_graph(selected_col):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=df['datetime_minute'],
+        y=df[selected_col],
+        mode='lines',
+        name=selected_col
+    ))
+
+    fig.update_layout(
+        title=f"{selected_col} over Time",
+        xaxis_title="Time",
+        yaxis_title=selected_col,
+        template="plotly_white"
+    )
+    return fig
 
 
 server = app.server
