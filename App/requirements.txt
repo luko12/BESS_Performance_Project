@@ -1,5 +1,6 @@
 dash
 plotly
+python-dotenv
 pandas
 sqlalchemy
 pyodbc
