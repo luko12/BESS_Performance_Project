@@ -184,7 +184,7 @@ app.layout = html.Div([
             dcc.Graph(id='graph4', style={'width': '48%'})
         ], style={'display': 'flex', 'justifyContent': 'space-between'})
     ], id='graphs-container', style={'padding': '0 20px'}),
-    html.H4("Key findings:"),
+    html.H4("Key findings: (see Exploratory Data Analysis section below for explanation)"),
     html.Ul([   
         html.Li("Possible LMP forecasting/trading opportunity due to 0.55 correlation between LMP and BESS dispatch"),
         html.Li("High quality HSL logic with minimal basepoint deviations (.99 correlation between basepoint and BESS dispatch)"),
