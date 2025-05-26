@@ -1,6 +1,8 @@
 # BESS_Performance_Project
 This project implements an ETL pipeline, data cleaning and transformation, and exploratory data analysis to understand BESS operating behavior.
 
+See website for more details: [https://batteryanalyticsdashboard-ecgffdhbbqakduau.westus2-01.azurewebsites.net/](https://batteryanalyticsdashboard-ecgffdhbbqakduau.westus2-01.azurewebsites.net/)
+
 * Datasets hosted in Datasets folder as CSVs
 * Azure Synapse Analytics pipeline copies CSVs into Delta Tables in ADLS gen2 storage account in Bronze workspace
 * Python notebook queries external weather API and loads into Delta Table in Bronze workspace with pySpark
