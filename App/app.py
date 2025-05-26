@@ -130,17 +130,10 @@ def render_scatter_lmp():
 # Second scatterplot: BESSkW vs gen_base_point
 def render_scatter_basepoint():
 
-    df_clean = df[['gen_base_point', 'BESSkW']].copy()
-    df_clean = df_clean.dropna()
-    df_clean = df_clean[
-        pd.to_numeric(df_clean['gen_base_point'], errors='coerce').notnull() &
-        pd.to_numeric(df_clean['BESSkW'], errors='coerce').notnull()
-    ]
-
-    corr = df_clean[['gen_base_point', 'BESSkW']].corr().iloc[0, 1]
+    corr = df[['gen_base_point', 'BESSkW']].corr().iloc[0, 1]
 
     fig = px.scatter(
-        df_clean,
+        df,
         x='gen_base_point',
         y='BESSkW',
         title="Basepoint vs BESSkW",
@@ -161,6 +154,99 @@ def render_scatter_basepoint():
     fig.update_layout(template="plotly_white")
     return fig
 
+# Third scatterplot: BESSkW vs gen_base_point at SOC extremes
+def render_scatter_basepoint_extremes():
+
+    df_filtered = df[(df['SOC'] < 10) | (df['SOC'] > 90)]
+    corr = df_filtered[['gen_base_point', 'BESSkW']].corr().iloc[0, 1]
+
+    fig = px.scatter(
+        df_filtered,
+        x='gen_base_point',
+        y='BESSkW',
+        title=r"Basepoint vs BESSkW at SOC Extremes (<10% or >90%)",
+        labels={'gen_base_point': 'Base Point', 'BESSkW': 'Battery Power (kW)'},
+        opacity=0.7
+    )
+
+    fig.add_annotation(
+        xref='paper',
+        yref='paper',
+        x=0.5,
+        y=1.1,
+        showarrow=False,
+        font=dict(size=14),
+        text=f"Correlation Coefficient: {corr:.3f}"
+    )
+
+    fig.update_layout(template="plotly_white")
+    return fig
+
+def render_power_histogram():
+    df_filtered = df[(df['RTAC_P'] > 2000) | (df['RTAC_P'] < -2000)]  # Filter out idling
+    fig = px.histogram(
+        df_filtered,
+        x='RTAC_P',
+        nbins=40,
+        title="Histogram of RTAC_P",
+        labels={'RTAC_P': 'RTAC Power'},
+    )
+    fig.update_layout(template="plotly_white")
+    return fig
+
+def render_resting_SOC_histogram():
+    df_filtered = df[(df['RTAC_P'] < 2000) | (df['RTAC_P'] > -2000)]  # Filter only idling
+    fig = px.histogram(
+        df_filtered,
+        x='SOC',
+        nbins=40,
+        title="Histogram of Resting SOC",
+    )
+    fig.update_layout(template="plotly_white")
+    return fig
+
+
+
+# cycles[cycles['cycle type']=='discharging'].sort_values(by='cycle duration', ascending=False).head(5)
+
+# import plotly.figure_factory as ff
+
+# # Group values
+# charging = cycles[cycles["cycle type"] == "charging"]["cycle duration"]
+# discharging = cycles[cycles["cycle type"] == "discharging"]["cycle duration"]
+
+# fig = ff.create_distplot(
+#     [charging, discharging],
+#     group_labels=["Charging", "Discharging"],
+#     show_hist=False,
+#     show_rug=True
+# )
+
+# # Add axis labels
+# fig.update_layout(
+#     xaxis_title="Cycle Duration (minutes)",
+#     yaxis_title="Density",
+#     title="Cycle Duration"
+# )
+
+# fig.show()
+
+# fig = px.scatter(
+#     cycles,
+#     x="cycle duration",
+#     y="average power",  # all y=0 to align along x-axis
+#     color="cycle type"
+# )
+# fig.show()
+
+# cycles['abs soc change'] = abs(cycles['soc_change'])
+# fig = px.scatter(
+#     cycles,
+#     x="cycle duration",
+#     y="abs soc change",  # all y=0 to align along x-axis
+#     color="cycle type"
+# )
+# fig.show()
 
 ###########################################################
 # Build Dash app
@@ -238,7 +324,7 @@ app.layout = html.Div([
         html.Br(),
         html.Br(),
         "Spark + Delta Tables make for efficient computation and storage for BESS "
-        "Performance data because Spark uses distributed computing on multiple notes and Delta Tables are built off of parquet files."
+        "Performance data because Spark uses distributed computing on multiple nodes and Delta Tables are built off of parquet files."
         " In a production environment, "
         "this pipeline might be copying data from a site historian or other SCADA system and on a scheduled/automated basis rather than as "
         "a one-time copy. Synapse Analytics offers the functionality to connect to such SCADA systems and to schedule runs on a desired frequency.",
@@ -342,7 +428,41 @@ app.layout = html.Div([
         dcc.Graph(
             id='power-basepoint-scatter',
             figure=render_scatter_basepoint()
-        )
+        ),
+        html.H4("Scatterplot: Basepoint vs BESSkW at SOC Extremes"),
+        html.P("As expected, the site's ability to follow basepoint deteriorates as it approaches SOC extremes," \
+        " but only very slightly. " \
+        "This indicates high quality PPC/HSL logic with a well-tuned lookahead function " \
+        "to account for potential racks faulting offline within the SCED interval as they" \
+        " hit SOC or cell voltage protection limits. There might be minor room" \
+        " for improvement to the HSL lookahead function to better estimate behavior at " \
+        " the extremes, but overall I am quite impressed with the performance!"),
+        dcc.Graph(
+            id='power-basepoint-scatter-extremes',
+            figure=render_scatter_basepoint_extremes()
+        ),
+        html.H4("Histogram: RTAC_P"),
+        html.P("Filtering OUT idling periods when RTAC_P is between (-2MW, 2MW), we can see" \
+        " an interesting distribution of power values. Since negative power indicates charging," \
+        " we can see the the site charges relatively evenly across the range of power values. " \
+        "On the other hand, we can observe that the site discharges mostly at high power (60MW+). " \
+        "An observation is that despite the listed site spec of 100MW, we do not observe power beyond +/- 65MW."),
+        dcc.Graph(
+            id='power-histogram',
+            figure=render_power_histogram()
+        ),
+        html.H4("Histogram: Resting SOC"),
+        html.P("Filtering ONLY idling periods when RTAC_P is between (-2MW, 2MW), we can see" \
+        " that the site largely rests at high SOC (97.5%+). This can be beneficial, for example if the OEM " \
+        "enables automatic cell balancing at high SOC (eg Powin). Not all OEMs enable balancing at high SOC though, " \
+        "for example Sungrow enables balancing at the low end of the SOC/voltage curve. Either way, " \
+        " outside of cell balancing it is generally not recommended " \
+        " to idle the cells at their extremes and is instead recommended to enter the platform period of ~10-90%" \
+        " for extended idling to mitigate cell degradation."),
+        dcc.Graph(
+            id='resting-soc-histogram',
+            figure=render_resting_SOC_histogram()
+        ),
 ])
 
 ])
@@ -400,7 +520,7 @@ def update_graphs(slider_range):
     )
     fig3.update_xaxes(dtick=6 * 60 * 60 * 1000, tickformat="%H:%M\n%b %d")
 
-    fig4 = px.line(filtered_df, x='datetime_minute', y='temperature', title='Temperature')
+    fig4 = px.line(filtered_df, x='datetime_minute', y='temperature', title='Weather (degC)')
     fig4.update_layout(margin=dict(l=20, r=20, t=40, b=20), height=300)
     fig4.update_xaxes(dtick=6 * 60 * 60 * 1000, tickformat="%H:%M\n%b %d")
 
