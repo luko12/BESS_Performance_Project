@@ -1,0 +1,227 @@
+{
+	"name": "Cycles",
+	"properties": {
+		"nbformat": 4,
+		"nbformat_minor": 2,
+		"bigDataPool": {
+			"referenceName": "apachesparkpool",
+			"type": "BigDataPoolReference"
+		},
+		"sessionProperties": {
+			"driverMemory": "28g",
+			"driverCores": 4,
+			"executorMemory": "28g",
+			"executorCores": 4,
+			"numExecutors": 2,
+			"conf": {
+				"spark.dynamicAllocation.enabled": "false",
+				"spark.dynamicAllocation.minExecutors": "2",
+				"spark.dynamicAllocation.maxExecutors": "2",
+				"spark.autotune.trackingId": "82c66a1e-525e-4883-85c5-a3cfafdf6f3c"
+			}
+		},
+		"metadata": {
+			"saveOutput": true,
+			"enableDebugMode": false,
+			"kernelspec": {
+				"name": "synapse_pyspark",
+				"display_name": "Synapse PySpark"
+			},
+			"language_info": {
+				"name": "python"
+			},
+			"a365ComputeOptions": {
+				"id": "/subscriptions/b8feecf6-2675-412f-9140-d5738847cc97/resourceGroups/BESS_Performance_Group/providers/Microsoft.Synapse/workspaces/synapsebess/bigDataPools/apachesparkpool",
+				"name": "apachesparkpool",
+				"type": "Spark",
+				"endpoint": "https://synapsebess.dev.azuresynapse.net/livyApi/versions/2019-11-01-preview/sparkPools/apachesparkpool",
+				"auth": {
+					"type": "AAD",
+					"authResource": "https://dev.azuresynapse.net"
+				},
+				"sparkVersion": "3.4",
+				"nodeCount": 3,
+				"cores": 4,
+				"memory": 28,
+				"automaticScaleJobs": false
+			},
+			"sessionKeepAliveTimeout": 30
+		},
+		"cells": [
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"# Setup\n",
+					"#### (Import Packages and Read Dataset)"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# imports\n",
+					"import requests\n",
+					"import datetime\n",
+					"import pandas as pd\n",
+					"from py4j.java_gateway import java_import\n",
+					"from pyspark.sql.functions import to_timestamp, min, max, col, date_trunc, avg, last\n",
+					"import plotly.express as px\n",
+					"import plotly.graph_objects as go\n",
+					"from plotly.subplots import make_subplots"
+				],
+				"execution_count": 13
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"base_path = r\"abfss://datalake@bessstorage.dfs.core.windows.net/\"\n",
+					"silver_path = base_path + r\"silver/\"\n",
+					"gold_path = base_path + r\"gold/\""
+				],
+				"execution_count": 2
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# determine delta table paths in Bronze directory\n",
+					"java_import(spark._jvm, 'org.apache.hadoop.fs.Path')\n",
+					"\n",
+					"fs = spark._jvm.org.apache.hadoop.fs.FileSystem.get(spark._jsc.hadoopConfiguration())\n",
+					"status = fs.listStatus(spark._jvm.Path(silver_path))\n",
+					"delta_table_paths = [str(file.getPath()) for file in status if file.isDirectory()]\n",
+					"delta_table_paths"
+				],
+				"execution_count": 3
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"# read merged silver dataset as df\n",
+					"silver_path = \"abfss://datalake@bessstorage.dfs.core.windows.net/silver/merged_delta\"\n",
+					"silver_df = spark.read.format(\"delta\").load(silver_path).toPandas()\n",
+					"silver_df.head(3)"
+				],
+				"execution_count": 45
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"# Group Cycles"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"silver_df = silver_df.sort_values('datetime_minute').reset_index(drop=True)\n",
+					"\n",
+					"# Classify power state\n",
+					"def classify(power):\n",
+					"    if power <= -2000:\n",
+					"        return 'charging'\n",
+					"    elif power >= 2000:\n",
+					"        return 'discharging'\n",
+					"    else:\n",
+					"        return 'idle'\n",
+					"\n",
+					"silver_df['state'] = silver_df['RTAC_P'].apply(classify)\n",
+					"silver_df.head(3)"
+				],
+				"execution_count": 46
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"cycles = []\n",
+					"in_cycle = False\n",
+					"cycle_type = None\n",
+					"start_idx = None\n",
+					"\n",
+					"for i in range(len(silver_df)):\n",
+					"    current_state = silver_df.at[i, 'state']\n",
+					"\n",
+					"    if not in_cycle:\n",
+					"        if current_state == 'charging':\n",
+					"            in_cycle = True\n",
+					"            cycle_type = 'charging'\n",
+					"            start_idx = i\n",
+					"        elif current_state == 'discharging':\n",
+					"            in_cycle = True\n",
+					"            cycle_type = 'discharging'\n",
+					"            start_idx = i\n",
+					"    else:\n",
+					"        # in a cycle\n",
+					"        if (cycle_type == 'charging' and current_state != 'charging') or \\\n",
+					"            (cycle_type == 'discharging' and current_state != 'discharging'):\n",
+					"            # End of cycle\n",
+					"            end_idx = i - 1 if i > start_idx else i\n",
+					"            cycle_df = silver_df.iloc[start_idx:end_idx+1]\n",
+					"\n",
+					"            if not cycle_df.empty:\n",
+					"                cycles.append({\n",
+					"                    'start_datetime_minute': cycle_df['datetime_minute'].iloc[0],\n",
+					"                    'end_datetime_minute': cycle_df['datetime_minute'].iloc[-1],\n",
+					"                    'cycle_type': cycle_type,\n",
+					"                    'cycle_duration': (cycle_df['datetime_minute'].iloc[-1] - cycle_df['datetime_minute'].iloc[0]).total_seconds() / 60,\n",
+					"                    'average_power': cycle_df['RTAC_P'].mean(),\n",
+					"                    'soc_change': cycle_df['SOC'].iloc[-1] - cycle_df['SOC'].iloc[0]\n",
+					"                })\n",
+					"\n",
+					"            in_cycle = False\n",
+					"            cycle_type = None\n",
+					"            start_idx = None\n",
+					"\n",
+					"# Catch if at end of data\n",
+					"if in_cycle and start_idx is not None:\n",
+					"    cycle_df = silver_df.iloc[start_idx:]\n",
+					"    if not cycle_df.empty:\n",
+					"        cycles.append({\n",
+					"            'start_datetime_minute': cycle_df['datetime_minute'].iloc[0],\n",
+					"            'end_datetime_minute': cycle_df['datetime_minute'].iloc[-1],\n",
+					"            'cycle_type': cycle_type,\n",
+					"            'cycle_duration': (cycle_df['datetime_minute'].iloc[-1] - cycle_df['datetime_minute'].iloc[0]).total_seconds() / 60,\n",
+					"            'average_power': cycle_df['power'].mean(),\n",
+					"            'soc_change': cycle_df['SOC'].iloc[-1] - cycle_df['SOC'].iloc[0]\n",
+					"        })\n",
+					"\n",
+					"cycles = pd.DataFrame(cycles)\n",
+					"cycles.head(3)"
+				],
+				"execution_count": 47
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"# Write into Delta Table in Gold Directory"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"cycles = spark.createDataFrame(cycles)\n",
+					"cycles.write.format(\"delta\").mode(\"overwrite\").save(gold_path + \"cycles_delta\")"
+				],
+				"execution_count": 48
+			}
+		]
+	}
+}
