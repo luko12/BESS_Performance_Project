@@ -481,7 +481,7 @@
 			"dependsOn": []
 		},
 		{
-			"name": "[concat(parameters('workspaceName'), '/create_external_view')]",
+			"name": "[concat(parameters('workspaceName'), '/create_external_view_merged')]",
 			"type": "Microsoft.Synapse/workspaces/sqlscripts",
 			"apiVersion": "2019-06-01-preview",
 			"properties": {
@@ -581,7 +581,7 @@
 						"spark.dynamicAllocation.enabled": "false",
 						"spark.dynamicAllocation.minExecutors": "2",
 						"spark.dynamicAllocation.maxExecutors": "2",
-						"spark.autotune.trackingId": "8b3f1963-0ee9-4928-8d29-bde4deab97be"
+						"spark.autotune.trackingId": "b203aa36-0c47-45fe-aa19-91c2c1bf01eb"
 					}
 				},
 				"metadata": {
@@ -2063,6 +2063,26 @@
 			},
 			"dependsOn": [],
 			"location": "australiaeast"
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/create_external_view_cycles')]",
+			"type": "Microsoft.Synapse/workspaces/sqlscripts",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"content": {
+					"query": "CREATE OR ALTER VIEW dbo.cycles_delta_view AS\nSELECT * \nFROM OPENROWSET(\n    BULK 'datalake/gold/cycles_delta/',\n    DATA_SOURCE = 'bess_datalake',\n    FORMAT = 'DELTA'\n) AS rows;",
+					"metadata": {
+						"language": "sql"
+					},
+					"currentConnection": {
+						"databaseName": "MyDB",
+						"poolName": "Built-in"
+					},
+					"resultLimit": 5000
+				},
+				"type": "SqlQuery"
+			},
+			"dependsOn": []
 		}
 	]
 }
