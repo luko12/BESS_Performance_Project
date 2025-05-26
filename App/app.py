@@ -1,15 +1,17 @@
 import os
 import dash
-from dash import dcc, html, Input, Output
+from dash import dcc, html, Input, Output, dash_table
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import plotly.figure_factory as ff
 import pandas as pd
 import pyodbc
 from sqlalchemy import create_engine
 import datetime
 from dotenv import load_dotenv
 import math
+
 
 import urllib
 
@@ -33,11 +35,16 @@ params = urllib.parse.quote_plus(
 
 engine = create_engine(f"mssql+pyodbc:///?odbc_connect={params}")
 
-
+# import merged df
 df = pd.read_sql("SELECT * FROM dbo.merged_delta_view", engine)
 df['datetime_minute'] = pd.to_datetime(df['datetime_minute'])
 df = df.sort_values(by='datetime_minute')
 
+# import cycles df
+cycles = pd.read_sql("SELECT * FROM dbo.cycles_delta_view", engine)
+cycles['start_datetime_minute'] = pd.to_datetime(cycles['start_datetime_minute'])
+cycles['end_datetime_minute'] = pd.to_datetime(cycles['end_datetime_minute'])
+cycles = cycles.sort_values(by='start_datetime_minute')
 
 ############################################
 # Part 3 Graphs
@@ -205,48 +212,52 @@ def render_resting_SOC_histogram():
     fig.update_layout(template="plotly_white")
     return fig
 
+# cycles
+def render_cycle_duration_distplot():
+    charging = cycles[cycles["cycle_type"] == "charging"]["cycle_duration"]
+    discharging = cycles[cycles["cycle_type"] == "discharging"]["cycle_duration"]
 
+    fig = ff.create_distplot(
+        [charging, discharging],
+        group_labels=["Charging", "Discharging"],
+        show_hist=False,
+        show_rug=True
+    )
+    fig.update_layout(
+        xaxis_title="Cycle Duration (minutes)",
+        yaxis_title="Frequency",
+        title="Cycle Duration"
+    )
+    return fig
 
-# cycles[cycles['cycle type']=='discharging'].sort_values(by='cycle duration', ascending=False).head(5)
+def render_cycle_duration_power_scatter():
+    fig = px.scatter(
+        cycles,
+        x="cycle_duration",
+        y="average_power",  # all y=0 to align along x-axis
+        color="cycle_type"
+    )
+    fig.update_layout(
+        xaxis_title= "Cycle Duration (minutes)",
+        yaxis_title= "Average Power (kW)",
+        title="Cycle Duration vs Average Power"
+    )
+    return fig
 
-# import plotly.figure_factory as ff
-
-# # Group values
-# charging = cycles[cycles["cycle type"] == "charging"]["cycle duration"]
-# discharging = cycles[cycles["cycle type"] == "discharging"]["cycle duration"]
-
-# fig = ff.create_distplot(
-#     [charging, discharging],
-#     group_labels=["Charging", "Discharging"],
-#     show_hist=False,
-#     show_rug=True
-# )
-
-# # Add axis labels
-# fig.update_layout(
-#     xaxis_title="Cycle Duration (minutes)",
-#     yaxis_title="Density",
-#     title="Cycle Duration"
-# )
-
-# fig.show()
-
-# fig = px.scatter(
-#     cycles,
-#     x="cycle duration",
-#     y="average power",  # all y=0 to align along x-axis
-#     color="cycle type"
-# )
-# fig.show()
-
-# cycles['abs soc change'] = abs(cycles['soc_change'])
-# fig = px.scatter(
-#     cycles,
-#     x="cycle duration",
-#     y="abs soc change",  # all y=0 to align along x-axis
-#     color="cycle type"
-# )
-# fig.show()
+def render_cycle_duration_soc_scatter():
+    cycles['abs_soc_change'] = abs(cycles['soc_change'])
+    fig = px.scatter(
+        cycles,
+        x="cycle_duration",
+        y="abs_soc_change",  # all y=0 to align along x-axis
+        color="cycle_type"
+    )
+    fig.update_layout(
+        xaxis_title="Cycle Duration (minutes)",
+        yaxis_title="Absolute SOC Change (%)",
+        title="Depth of Discharge"
+    )
+    return fig
 
 ###########################################################
 # Build Dash app
@@ -463,6 +474,60 @@ app.layout = html.Div([
             id='resting-soc-histogram',
             figure=render_resting_SOC_histogram()
         ),
+        html.H2("Cycles Analysis"),
+        html.P("In this section, I further refined the silver dataset into a cycles dataset" \
+        " which lives in the Gold layer of the ADLS Gen2 storage account. Like the silver " \
+        "dataset, I created a SQL View on top of this Delta Table. To create this dataset, I " \
+        'categorized each row in the silver dataset as "charging", "discharging", or "idling"' \
+        " based on the RTAC_P value. I then looped over the dataset and associated " \
+        "continuous rows into discharge cycles, charging cycles, and idles; each recorded with " \
+        "their respective start time, end time, duration, average power, and SOC change."),
+        html.P("Top 5 longest discharging cycles:"),
+        dash_table.DataTable(
+            columns=[{"name": col, "id": col} for col in cycles.columns],
+            data=cycles[cycles['cycle_type']=='discharging'].sort_values(
+                by='cycle_duration', ascending=False).head(5).to_dict('records'),
+            style_table={'overflowX': 'auto'},
+            style_cell={'textAlign': 'left', 'padding': '5px'},
+            style_header={'backgroundColor': 'lightgrey', 'fontWeight': 'bold'}
+        ),
+        html.P("Top 5 longest charging cycles:\n" \
+        "Interestingly, the longest charging cycle results in a decrease in SOC. Upon further inspection" \
+        " it appears that this is due to racks suddenly faulting offline at the end of the cycle. This illuminates " \
+        "how the SOC value is calculated: it is the total SOC not the online SOC."),
+        dash_table.DataTable(
+            columns=[{"name": col, "id": col} for col in cycles.columns],
+            data=cycles[cycles['cycle_type']=='charging'].sort_values(
+                by='cycle_duration', ascending=False).head(5).to_dict('records'),
+            style_table={'overflowX': 'auto'},
+            style_cell={'textAlign': 'left', 'padding': '5px'},
+            style_header={'backgroundColor': 'lightgrey', 'fontWeight': 'bold'}
+        ),
+        html.H4("Cycle Duration Distribution"),
+        html.P("The distribution of cycle duration shows that the majority of cycles are short (<20 minutes). The"\
+        " charge cycles are slightly longer than the discharge cycles on average. Since the site is designed for 2hrs, this indicates "\
+        "a possible under-utilization of energy capacity. Perhaps, with advanced SOC management, the site could be discharged "\
+        "longer as the LMP spikes, or charged longer as the LMP dips. "),
+        dcc.Graph(
+            id='cycle-duration-distplot',
+            figure=render_cycle_duration_distplot()
+        ),
+        html.H4("Cycle Duration vs Average Power"),
+        html.P("This plot shows a weak positive relationship between power and cycle duration. I would say this is expected " \
+        "behavior: the shorter duration, low power applications are possibly reflective of frequency regulation/ancillary service trades" \
+        " whereas the longer duration, high power cycles are possibly for energy trades"),
+        dcc.Graph(
+            id='cycle-duration-power-scatter',
+            figure=render_cycle_duration_power_scatter()
+        ),
+        html.H4("Depth of Discharge (DOD)"),
+        html.P("This plot shows the SOC change achieved during each cycle, with a max SOC change of <40%. "\
+               " Similar to the Cycle Duration Distribution plot, this indicates a possible under-utilization of the site's"\
+                " installed energy capacity."),
+        dcc.Graph(
+            id='cycle-duration-soc-scatter',
+            figure=render_cycle_duration_soc_scatter()
+        )
 ])
 
 ])
