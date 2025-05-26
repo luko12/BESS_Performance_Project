@@ -1,5 +1,5 @@
 {
-	"name": "create_external_view",
+	"name": "create_external_view_merged",
 	"properties": {
 		"content": {
 			"query": "CREATE OR ALTER VIEW dbo.merged_delta_view AS\nSELECT * \nFROM OPENROWSET(\n    BULK 'datalake/silver/merged_delta/',\n    DATA_SOURCE = 'bess_datalake',\n    FORMAT = 'DELTA'\n) AS rows;",
