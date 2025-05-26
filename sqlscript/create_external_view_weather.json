@@ -1,0 +1,17 @@
+{
+	"name": "create_external_view_weather",
+	"properties": {
+		"content": {
+			"query": "CREATE OR ALTER VIEW weather_delta_view AS\nSELECT * \nFROM OPENROWSET(\n    BULK 'https://bessstorage.dfs.core.windows.net/datalake/bronze/weather_delta/',\n    FORMAT = 'DELTA'\n) AS rows;",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "MyDB",
+				"poolName": "Built-in"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}
