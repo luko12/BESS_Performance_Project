@@ -39,7 +39,7 @@ def render_scatter_lmp(df):
     fig.update_layout(template="plotly_white")
     return fig
 
-# Second scatterplot: BESSkW vs gen_base_point
+
 def render_scatter_basepoint(df):
 
     corr = df[['gen_base_point', 'BESSkW']].corr().iloc[0, 1]
@@ -66,7 +66,7 @@ def render_scatter_basepoint(df):
     fig.update_layout(template="plotly_white")
     return fig
 
-# Third scatterplot: BESSkW vs gen_base_point at SOC extremes
+
 def render_scatter_basepoint_extremes(df):
 
     df_filtered = df[(df['SOC'] < 10) | (df['SOC'] > 90)]
@@ -94,6 +94,7 @@ def render_scatter_basepoint_extremes(df):
     fig.update_layout(template="plotly_white")
     return fig
 
+
 def render_power_histogram(df):
     df_filtered = df[(df['RTAC_P'] > 2000) | (df['RTAC_P'] < -2000)]  # Filter out idling
     fig = px.histogram(
@@ -105,6 +106,7 @@ def render_power_histogram(df):
     )
     fig.update_layout(template="plotly_white")
     return fig
+
 
 def render_resting_SOC_histogram(df):
     df_filtered = df[(df['RTAC_P'] < 2000) | (df['RTAC_P'] > -2000)]  # Filter only idling
@@ -139,7 +141,7 @@ def render_cycle_duration_power_scatter(cycles):
     fig = px.scatter(
         cycles,
         x="cycle_duration",
-        y="average_power",  # all y=0 to align along x-axis
+        y="average_power",
         color="cycle_type"
     )
     fig.update_layout(
@@ -149,12 +151,13 @@ def render_cycle_duration_power_scatter(cycles):
     )
     return fig
 
+
 def render_cycle_duration_soc_scatter(cycles):
     cycles['abs_soc_change'] = abs(cycles['soc_change'])
     fig = px.scatter(
         cycles,
         x="cycle_duration",
-        y="abs_soc_change",  # all y=0 to align along x-axis
+        y="abs_soc_change",
         color="cycle_type"
     )
     fig.update_layout(
@@ -163,6 +166,7 @@ def render_cycle_duration_soc_scatter(cycles):
         title="Depth of Discharge"
     )
     return fig
+
 
 def render_availability(df):
     fig = go.Figure()
@@ -174,12 +178,13 @@ def render_availability(df):
     fig.update_layout(
         title=dict(text='RTE', y=0.99),
         yaxis=dict(title='Equipment Availability %'),
-        margin=dict(l=60, r=60, t=60, b=40),  # Equal left/right margin
+        margin=dict(l=60, r=60, t=60, b=40),
         height=300,
         xaxis=dict(dtick=6 * 60 * 60 * 1000, tickformat="%H:%M\n%b %d"),
         legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="center", x=0.5)
     )
     return fig
+
 
 def render_power_availability(df):
     fig = go.Figure()
@@ -198,6 +203,7 @@ def render_power_availability(df):
         legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="center", x=0.5)
     )
     return fig
+
 
 def render_cell_temp_power(df):
     corr = df[['MaxCellT', 'BESSkW']].corr().iloc[0, 1]
@@ -218,6 +224,7 @@ def render_cell_temp_power(df):
         text=f"Correlation Coefficient: {corr:.3f}"
     )
     return fig
+
 
 def render_cell_temp_weather(df):
     corr = df[['MaxCellT', 'temperature']].corr().iloc[0, 1]
