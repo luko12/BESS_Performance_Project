@@ -481,12 +481,52 @@
 			"dependsOn": []
 		},
 		{
+			"name": "[concat(parameters('workspaceName'), '/create_external_view_cycles')]",
+			"type": "Microsoft.Synapse/workspaces/sqlscripts",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"content": {
+					"query": "CREATE OR ALTER VIEW dbo.cycles_delta_view AS\nSELECT * \nFROM OPENROWSET(\n    BULK 'datalake/gold/cycles_delta/',\n    DATA_SOURCE = 'bess_datalake',\n    FORMAT = 'DELTA'\n) AS rows;",
+					"metadata": {
+						"language": "sql"
+					},
+					"currentConnection": {
+						"databaseName": "MyDB",
+						"poolName": "Built-in"
+					},
+					"resultLimit": 5000
+				},
+				"type": "SqlQuery"
+			},
+			"dependsOn": []
+		},
+		{
 			"name": "[concat(parameters('workspaceName'), '/create_external_view_merged')]",
 			"type": "Microsoft.Synapse/workspaces/sqlscripts",
 			"apiVersion": "2019-06-01-preview",
 			"properties": {
 				"content": {
 					"query": "CREATE OR ALTER VIEW dbo.merged_delta_view AS\nSELECT * \nFROM OPENROWSET(\n    BULK 'datalake/silver/merged_delta/',\n    DATA_SOURCE = 'bess_datalake',\n    FORMAT = 'DELTA'\n) AS rows;",
+					"metadata": {
+						"language": "sql"
+					},
+					"currentConnection": {
+						"databaseName": "MyDB",
+						"poolName": "Built-in"
+					},
+					"resultLimit": 5000
+				},
+				"type": "SqlQuery"
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/create_external_view_weather')]",
+			"type": "Microsoft.Synapse/workspaces/sqlscripts",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"content": {
+					"query": "CREATE OR ALTER VIEW weather_delta_view AS\nSELECT * \nFROM OPENROWSET(\n    BULK 'https://bessstorage.dfs.core.windows.net/datalake/bronze/weather_delta/',\n    FORMAT = 'DELTA'\n) AS rows;",
 					"metadata": {
 						"language": "sql"
 					},
@@ -581,7 +621,7 @@
 						"spark.dynamicAllocation.enabled": "false",
 						"spark.dynamicAllocation.minExecutors": "2",
 						"spark.dynamicAllocation.maxExecutors": "2",
-						"spark.autotune.trackingId": "b203aa36-0c47-45fe-aa19-91c2c1bf01eb"
+						"spark.autotune.trackingId": "82c66a1e-525e-4883-85c5-a3cfafdf6f3c"
 					}
 				},
 				"metadata": {
@@ -606,8 +646,7 @@
 						"sparkVersion": "3.4",
 						"nodeCount": 3,
 						"cores": 4,
-						"memory": 28,
-						"automaticScaleJobs": false
+						"memory": 28
 					},
 					"sessionKeepAliveTimeout": 30
 				},
@@ -628,7 +667,6 @@
 					},
 					{
 						"cell_type": "code",
-						"metadata": {},
 						"source": [
 							"# imports\n",
 							"import requests\n",
@@ -645,7 +683,6 @@
 					},
 					{
 						"cell_type": "code",
-						"metadata": {},
 						"source": [
 							"base_path = r\"abfss://datalake@bessstorage.dfs.core.windows.net/\"\n",
 							"silver_path = base_path + r\"silver/\"\n",
@@ -656,7 +693,6 @@
 					},
 					{
 						"cell_type": "code",
-						"metadata": {},
 						"source": [
 							"# determine delta table paths in Bronze directory\n",
 							"java_import(spark._jvm, 'org.apache.hadoop.fs.Path')\n",
@@ -671,7 +707,6 @@
 					},
 					{
 						"cell_type": "code",
-						"metadata": {},
 						"source": [
 							"# read merged silver dataset as df\n",
 							"silver_path = \"abfss://datalake@bessstorage.dfs.core.windows.net/silver/merged_delta\"\n",
@@ -696,7 +731,6 @@
 					},
 					{
 						"cell_type": "code",
-						"metadata": {},
 						"source": [
 							"silver_df = silver_df.sort_values('datetime_minute').reset_index(drop=True)\n",
 							"\n",
@@ -717,7 +751,6 @@
 					},
 					{
 						"cell_type": "code",
-						"metadata": {},
 						"source": [
 							"cycles = []\n",
 							"in_cycle = False\n",
@@ -792,7 +825,6 @@
 					},
 					{
 						"cell_type": "code",
-						"metadata": {},
 						"source": [
 							"cycles = spark.createDataFrame(cycles)\n",
 							"cycles.write.format(\"delta\").mode(\"overwrite\").save(gold_path + \"cycles_delta\")"
@@ -2063,26 +2095,6 @@
 			},
 			"dependsOn": [],
 			"location": "australiaeast"
-		},
-		{
-			"name": "[concat(parameters('workspaceName'), '/create_external_view_cycles')]",
-			"type": "Microsoft.Synapse/workspaces/sqlscripts",
-			"apiVersion": "2019-06-01-preview",
-			"properties": {
-				"content": {
-					"query": "CREATE OR ALTER VIEW dbo.cycles_delta_view AS\nSELECT * \nFROM OPENROWSET(\n    BULK 'datalake/gold/cycles_delta/',\n    DATA_SOURCE = 'bess_datalake',\n    FORMAT = 'DELTA'\n) AS rows;",
-					"metadata": {
-						"language": "sql"
-					},
-					"currentConnection": {
-						"databaseName": "MyDB",
-						"poolName": "Built-in"
-					},
-					"resultLimit": 5000
-				},
-				"type": "SqlQuery"
-			},
-			"dependsOn": []
 		}
 	]
 }
